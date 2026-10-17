@@ -1,0 +1,65 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+
+      - run: flutter pub get
+
+      - run: flutter test
+
+      # Project sites live at /<repo>/; a <user>.github.io repo lives at /.
+      - name: Work out base href
+        id: base
+        run: |
+          repo="${{ github.event.repository.name }}"
+          if [[ "$repo" == *.github.io ]]; then echo "href=/" >> "$GITHUB_OUTPUT"; else echo "href=/$repo/" >> "$GITHUB_OUTPUT"; fi
+
+      # GEMINI_API_KEY is optional. Anything passed here is readable in the
+      # published JavaScript, so only use a key restricted to this site.
+      - name: Build web
+        run: >
+          flutter build web --release
+          --base-href "${{ steps.base.outputs.href }}"
+          --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+
+      # Serve the app for unknown paths too, so deep links and refreshes work.
+      - run: cp build/web/index.html build/web/404.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
