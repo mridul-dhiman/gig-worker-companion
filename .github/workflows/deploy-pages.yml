@@ -40,10 +40,17 @@ jobs:
       # GEMINI_API_KEY is optional. Anything passed here is readable in the
       # published JavaScript, so only use a key restricted to this site.
       - name: Build web
-        run: >
-          flutter build web --release
-          --base-href "${{ steps.base.outputs.href }}"
-          --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          key="$(printf '%s' "$GEMINI_API_KEY" | tr -d '[:space:]')"
+          if [[ -n "$key" && ! "$key" =~ ^AIza[0-9A-Za-z_-]{35}$ ]]; then
+            echo "::error::GEMINI_API_KEY secret is not a valid Gemini key (expected AIza + 35 characters). Re-set it with only the key as the value."
+            exit 1
+          fi
+          flutter build web --release \
+            --base-href "${{ steps.base.outputs.href }}" \
+            "--dart-define=GEMINI_API_KEY=$key"
 
       # Serve the app for unknown paths too, so deep links and refreshes work.
       - run: cp build/web/index.html build/web/404.html
